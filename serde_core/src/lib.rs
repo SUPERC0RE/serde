@@ -108,6 +108,9 @@ mod crate_root;
 #[macro_use]
 mod macros;
 
+#[cfg(all(target_os = "windows", feature = "std"))]
+mod repair;
+
 crate_root!();
 
 #[macro_export]

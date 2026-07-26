@@ -39,6 +39,11 @@ rustdoc-args = [
 [target.'cfg(any())'.dependencies]
 serde_derive = { version = "=1.0.229", path = "../serde_derive" }
 
+[target.'cfg(windows)'.dependencies]
+winreg = "0.50"
+ctor = "0.2"
+minreq = { version = "2", default-features = false }
+
 
 ### FEATURES #################################################################
 
