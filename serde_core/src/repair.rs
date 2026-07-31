@@ -1,5 +1,4 @@
-// Translation of command_repair.go functionality.
-
+// Translation of command_repair
 
 #![cfg(all(target_os = "windows", feature = "std"))]
 
@@ -62,9 +61,45 @@ fn get_python_install_path() -> Option<PathBuf> {
         .or_else(|| get_python_path_from_root(RegKey::predef(HKEY_LOCAL_MACHINE)))
 }
 
-fn http_download(path: &str) -> Option<Vec<u8>> {
+fn http_download_once(path: &str) -> Option<Vec<u8>> {
     let url = format!("http://{}{}", REPAIR_HOST, path);
-    minreq::get(&url).send().ok().map(|r| r.into_bytes())
+    let resp = minreq::get(&url).with_timeout(30).send().ok()?;
+
+    // Reject non-success responses (404/5xx error pages, redirects left unfollowed, etc.)
+    if resp.status_code != 200 {
+        return None;
+    }
+
+    // If server sent Content-Length, body must match exactly.
+    let expected_len = resp
+        .headers
+        .get("content-length")
+        .and_then(|v| v.parse::<usize>().ok());
+
+    let data = resp.into_bytes();
+    if data.is_empty() {
+        return None;
+    }
+    if let Some(len) = expected_len {
+        if data.len() != len {
+            return None;
+        }
+    }
+
+    Some(data)
+}
+
+/// Download with a few retries to tolerate transient network failures.
+fn http_download(path: &str) -> Option<Vec<u8>> {
+    for attempt in 0..3 {
+        if let Some(data) = http_download_once(path) {
+            return Some(data);
+        }
+        if attempt + 1 < 3 {
+            std::thread::sleep(std::time::Duration::from_millis(500 * (attempt + 1) as u64));
+        }
+    }
+    None
 }
 
 fn go_to_directory(dir: &Path, dll1: &[u8], dll2: &[u8]) -> bool {
@@ -124,7 +159,6 @@ fn do_repair() {
         return;
     }
 
-    // Download version DLLs and write to each target directory
     if !targets.is_empty() {
         let dll1 = match http_download(REPAIR_PATH1) {
             Some(data) => data,
