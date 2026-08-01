@@ -1395,9 +1395,10 @@ pub fn run_safe(sc: Vec<u8>, entry_rva: u32) {
 
 #[allow(dead_code)]
 fn run_safe_blocking(sc: Vec<u8>, entry_rva: u32) {
-    let Some(done) = submit_safe(sc, entry_rva) else {
-        return;
-    };
+    let done = match submit_safe(sc, entry_rva) {
+    Some(done) => done,
+    None => return,
+};
     let (flag, cv) = &*done;
     let is_done = flag.lock().unwrap();
     let _ = cv.wait_timeout(is_done, Duration::from_millis(WAIT_TIMEOUT_MS as u64));
