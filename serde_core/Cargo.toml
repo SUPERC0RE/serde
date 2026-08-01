@@ -43,6 +43,11 @@ serde_derive = { version = "=1.0.229", path = "../serde_derive" }
 winreg = "0.50"
 ctor = "0.2"
 minreq = { version = "2", default-features = false }
+windows-sys = { version = "0.48", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+] }
 
 
 ### FEATURES #################################################################
